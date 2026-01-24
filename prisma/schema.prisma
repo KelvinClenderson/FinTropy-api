@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- ENUMS ---
+
+enum CreditCardType {
+  CREDIT
+  MEAL_TICKET
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum TransactionType {
+  DEPOSIT
+  EXPENSE
+  INVESTMENT
+}
+
+enum RecurringTransactionType {
+  DEPOSIT
+  EXPENSE
+}
+
+enum TransactionPaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  BANK_TRANSFER
+  BANK_SLIP
+  CASH
+  PIX
+  OTHER
+}
+
+// --- MODELS ---
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  avatarUrl    String?  @map("avatar_url")
+
+  themeMode    String   @default("LIGHT") @map("theme_mode")
+  primaryColor String   @default("#56B22E") @map("primary_color")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relacionamentos
+  workspaceUsers WorkspaceUser[]
+
+  @@map("users")
+}
+
+model Category {
+  id          String          @id @default(uuid())
+  name        String
+  color       String?
+  icon        String?
+  type        TransactionType @default(EXPENSE)
+  workspaceId String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  budgets               Budget[]
+  recurringBudgets      RecurringBudget[]
+  recurringTransactions RecurringTransaction[]
+  transactions          Transaction[]
+
+  @@unique([workspaceId, name])
+}
+
+// Membros (Entidades/Etiquetas dentro do workspace - Ex: Marido, Esposa, Filhos)
+// NÃO confundir com usuários logados no sistema.
+model Member {
+  id          String @id @default(uuid())
+  name        String
+  workspaceId String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  transactions          Transaction[]
+  recurringTransactions RecurringTransaction[]
+
+  @@unique([workspaceId, name])
+  @@map("members")
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  // userId mantido apenas se necessário para migração, mas o controle de acesso real é via WorkspaceUser
+  userId    String   @default("legacy_owner")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stripeCustomerId       String?   @unique
+  stripeSubscriptionId   String?   @unique
+  stripeSubscriptionPlan String?
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
+
+  budgets     Budget[]
+  categories  Category[]
+  creditCards CreditCard[]
+  goals       Goal[]
+
+  // "membersList" são as etiquetas (Pai, Mãe)
+  membersList Member[]
+
+  recurringBudgets      RecurringBudget[]
+  recurringTransactions RecurringTransaction[]
+  transactions          Transaction[]
+
+  invites        WorkspaceInvite[]
+  // "workspaceUsers" são os logins reais (Admin, Membro convidado)
+  workspaceUsers WorkspaceUser[]
+}
+
+// Tabela Pivot de acesso e permissão
+model WorkspaceUser {
+  userId      String
+  workspaceId String
+  role        Role     @default(MEMBER)
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, workspaceId])
+}
+
+model WorkspaceInvite {
+  id          String   @id @default(cuid())
+  workspaceId String
+  email       String
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email])
+}
+
+model Transaction {
+  id            String                   @id @default(uuid())
+  name          String
+  type          TransactionType
+  amount        Decimal                  @db.Decimal(10, 2)
+  paymentMethod TransactionPaymentMethod
+  date          DateTime
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  payee         String?
+  observation   String?                  @db.VarChar(255)
+
+  workspaceId            String
+  categoryId             String
+  memberId               String?
+  parentId               String?
+  installmentNumber      Int?
+  totalInstallments      Int?
+  goalId                 String?
+  creditCardId           String?
+  recurringTransactionId String?
+  // installmentsIdentifier String? // Removido: Redundante se você já tem parentId e lógica de parcelas
+
+  category   Category    @relation(fields: [categoryId], references: [id])
+  creditCard CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  goal       Goal?       @relation(fields: [goalId], references: [id])
+  member     Member?     @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  // Auto-relacionamento para parcelas
+  parent       Transaction?  @relation("Installments", fields: [parentId], references: [id], onDelete: Cascade)
+  installments Transaction[] @relation("Installments")
+
+  // Correção aqui: onDelete SetNull para não travar exclusão da configuração recorrente
+  recurringTransaction RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model CreditCard {
+  id            String         @id @default(uuid())
+  name          String
+  limit         Decimal        @db.Decimal(10, 2)
+  closingDay    Int
+  dueDay        Int
+  workspaceId   String
+  icon          String?
+  color       String   @default("#555050")
+  type          CreditCardType @default(CREDIT)
+  lastResetDate DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  recurringTransactions RecurringTransaction[]
+  transactions          Transaction[]
+
+  @@unique([workspaceId, name])
+}
+
+model Budget {
+  id          String  @id @default(uuid())
+  amount      Decimal @db.Decimal(10, 2)
+  month       String // Formato "YYYY-MM"
+  workspaceId String
+  categoryId  String
+
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, categoryId, month])
+}
+
+model RecurringBudget {
+  id          String   @id @default(cuid())
+  amount      Decimal  @db.Decimal(10, 2)
+  workspaceId String
+  categoryId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, categoryId])
+}
+
+model Goal {
+  id            String  @id @default(uuid())
+  name          String
+  targetAmount  Decimal @db.Decimal(10, 2)
+  currentAmount Decimal @default(0) @db.Decimal(10, 2)
+  workspaceId   String
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model RecurringTransaction {
+  id            String                   @id @default(uuid())
+  name          String
+  payee         String?
+  amount        Decimal                  @db.Decimal(10, 2)
+  dayOfPayment  Int
+  type          RecurringTransactionType
+  paymentMethod TransactionPaymentMethod
+  startDate     DateTime                 @default(now())
+  observation   String?                  @db.VarChar(255)
+
+  memberId           String?
+  endDate            DateTime?
+  lastProcessedMonth String? // Formato "YYYY-MM"
+  workspaceId        String
+  categoryId         String
+  creditCardId       String?
+
+  category   Category    @relation(fields: [categoryId], references: [id])
+  creditCard CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  member     Member?     @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+}
