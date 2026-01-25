@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { UsersRepository } from '../../repositories/users.repository';
-import { RegisterUserService } from '../../services/register-user.service';
+import { RegisterUserService } from '../../services/sessions/register-user.service';
 
 export class RegisterController {
   async handle(req: Request, res: Response) {

@@ -1,9 +1,13 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import { authenticateRoutes } from './routes/auth.routes'; // Vamos criar abaixo
+import swaggerUi from 'swagger-ui-express'; // Importar UI
+import { authenticateRoutes } from './routes/auth.routes';
+import { creditCardsRoutes } from './routes/credit-cards.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
+import { recurringTransactionsRoutes } from './routes/recurring-transactions.routes';
 import { transactionsRoutes } from './routes/transactions.routes';
+import swaggerFile from './swagger_output.json';
 
 export const app = express();
 
@@ -15,7 +19,12 @@ app.use(express.json());
 // Rotas
 app.use('/auth', authenticateRoutes);
 app.use('/transactions', transactionsRoutes);
-app.use('/dashboard', dashboardRoutes); // Adicionar
+app.use('/dashboard', dashboardRoutes);
+app.use('/credit-cards', creditCardsRoutes);
+app.use('/recurring-transactions', recurringTransactionsRoutes);
+
+// Documentação Swagger
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 // Tratamento de Erros Global (Opcional, mas recomendado)
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

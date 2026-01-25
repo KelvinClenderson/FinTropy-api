@@ -1,5 +1,5 @@
-import { TransactionPaymentMethod, TransactionType } from '@prisma/client';
-import { addMonths, subMonths } from 'date-fns';
+import { Prisma, TransactionPaymentMethod, TransactionType } from '@prisma/client';
+import { addMonths, startOfDay, subMonths } from 'date-fns';
 import { prisma } from '../../lib/prisma';
 import { TransactionsRepository } from '../../repositories/transactions.repository';
 
@@ -11,11 +11,15 @@ interface IRequest {
   paymentMethod: TransactionPaymentMethod;
   date?: string | Date;
   workspaceId: string;
+
+  // Opcionais
   creditCardId?: string | null;
   payee?: string | null;
   goalId?: string | null;
   memberId?: string | null;
   observation?: string | null;
+
+  // Parcelamento
   totalInstallments?: number | null;
   installmentNumber?: number | null;
   isInstallmentValue?: boolean;
@@ -41,10 +45,10 @@ export class CreateTransactionService {
     installmentNumber = 1,
     isInstallmentValue = false,
   }: IRequest) {
-    // 1. DATA BASE: Pega a data escolhida ou a atual
-    const rawDate = date ? new Date(date) : new Date();
+    // 1. DATA BASE: Normaliza para o início do dia para evitar problemas de fuso/hora
+    const rawDate = date ? startOfDay(new Date(date)) : startOfDay(new Date());
 
-    // Variável que vai guardar a data "Financeira"
+    // Variável que vai guardar a data "Financeira" (vencimento/pagamento)
     let billingDate = new Date(rawDate);
 
     // Variáveis auxiliares
@@ -52,9 +56,8 @@ export class CreateTransactionService {
     const currentInstallmentInput = installmentNumber || 1;
     const finalMemberId = memberId === 'none' || memberId === '' ? null : memberId;
 
-    // 2. LÓGICA DE FECHAMENTO DE FATURA (Cartão de Crédito)
-    // ⚠️ CORREÇÃO: Só aplicamos a regra de pular mês se for uma COMPRA NOVA (Parcela 1).
-    // Se o usuário está lançando a parcela 2, 3, etc., respeitamos a data que ele informou.
+    // 2. LÓGICA DE FECHAMENTO DE FATURA (Apenas Cartão de Crédito)
+    // Só aplicamos a regra de pular mês se for uma COMPRA NOVA (input diz ser parcela 1).
     if (currentInstallmentInput === 1) {
       if (paymentMethod === 'CREDIT_CARD' && creditCardId) {
         const card = await this.transactionsRepository.findCreditCardById(creditCardId);
@@ -62,35 +65,38 @@ export class CreateTransactionService {
         if (card && card.closingDay) {
           const purchaseDay = rawDate.getDate();
 
-          // Regra: Se o dia da compra for MAIOR ou IGUAL ao fechamento, pula 1 mês
+          // Regra: Se o dia da compra for MAIOR ou IGUAL ao fechamento, o vencimento é no próximo mês
           if (purchaseDay >= card.closingDay) {
             billingDate = addMonths(billingDate, 1);
           }
         }
       }
     } else {
-      // Se não é a parcela 1, a billingDate é EXATAMENTE a data informada.
-      // O usuário sabe que a parcela 2 vence dia X.
+      // Se o usuário está lançando a parcela "3 de 10", respeitamos a data que ele informou como sendo a data daquela parcela.
       billingDate = new Date(rawDate);
     }
 
-    // 3. CÁLCULO DO VALOR
+    // 3. CÁLCULO DO VALOR INDIVIDUAL
     let individualAmount = amount;
+
+    // Se não for valor da parcela (é valor total) e tem parcelas, divide.
     if (finalTotalInstallments > 1 && !isInstallmentValue) {
       individualAmount = Number((amount / finalTotalInstallments).toFixed(2));
     }
 
-    // 4. LÓGICA DE PARCELA RETROATIVA
-    // Se a billingDate é da parcela 2 (Jan), a parcela 1 foi em Dezembro.
+    // 4. LÓGICA DE PARCELA RETROATIVA (Reconstrução da linha do tempo)
+    // Se a billingDate informada é da parcela 3, precisamos descobrir quando foi a parcela 1.
     let firstInstallmentDate = new Date(billingDate);
 
     if (currentInstallmentInput > 1) {
       firstInstallmentDate = subMonths(billingDate, currentInstallmentInput - 1);
     }
 
+    // Objeto base para reutilizar
     const transactionBaseData = {
       name,
-      amount: individualAmount,
+      // ⚠️ Importante: Converter number para Decimal para o Prisma
+      amount: new Prisma.Decimal(individualAmount),
       type,
       categoryId,
       paymentMethod,
@@ -102,16 +108,19 @@ export class CreateTransactionService {
       observation: observation || null,
     };
 
-    // 5. CRIAÇÃO COM PARCELAMENTO
+    // 5. CRIAÇÃO COM PARCELAMENTO (Múltiplas Transações)
     if (finalTotalInstallments > 1) {
       return await prisma.$transaction(async (tx) => {
-        const transactionsToCreate = [];
-        let parentTxId = null;
+        const transactionsToCreate: Prisma.TransactionCreateManyInput[] = [];
+        let parentTxId: string | null = null;
+        let parentTxData = null;
 
         for (let i = 1; i <= finalTotalInstallments; i++) {
+          // Calcula a data desta parcela específica baseada na primeira
           const installmentDate = addMonths(firstInstallmentDate, i - 1);
 
           if (i === 1) {
+            // A primeira parcela é a "Mãe" (Parent)
             const parentTx = await tx.transaction.create({
               data: {
                 ...transactionBaseData,
@@ -122,34 +131,40 @@ export class CreateTransactionService {
               },
             });
             parentTxId = parentTx.id;
+            parentTxData = parentTx;
           } else {
+            // As outras entram no array para createMany (performance)
             transactionsToCreate.push({
               ...transactionBaseData,
               date: installmentDate,
               installmentNumber: i,
               totalInstallments: finalTotalInstallments,
+              // Se parentTxId for null aqui, algo deu errado na lógica, mas o TS exige verificação
               parentId: parentTxId,
             });
           }
         }
 
+        // Cria as parcelas filhas em lote
         if (transactionsToCreate.length > 0) {
           await tx.transaction.createMany({
             data: transactionsToCreate,
           });
         }
 
-        // Retornamos a transação "Pai" para a resposta da API
-        return { id: parentTxId, ...transactionBaseData, date: firstInstallmentDate };
+        // Retorna a transação Pai (ou a primeira criada) para o Controller
+        return parentTxData;
       });
     }
 
-    // 6. CRIAÇÃO SIMPLES
+    // 6. CRIAÇÃO SIMPLES (Transação única)
+    // Aqui usamos o repository padrão que já deve tratar a conversão interna ou aceitar Decimal
     return await this.transactionsRepository.create({
       ...transactionBaseData,
       date: billingDate,
       installmentNumber: 1,
       totalInstallments: 1,
+      parentId: null,
     });
   }
 }

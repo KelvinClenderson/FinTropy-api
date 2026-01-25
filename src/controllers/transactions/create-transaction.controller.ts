@@ -5,11 +5,13 @@ import { CreateTransactionService } from '../../services/transactions/create-tra
 
 export class CreateTransactionController {
   async handle(req: Request, res: Response) {
-    const createTransactionSchema = z.object({
-      name: z.string().trim().min(1, 'Nome é obrigatório'),
-      amount: z.number().positive('O valor deve ser positivo'),
-      type: z.enum(['DEPOSIT', 'EXPENSE', 'INVESTMENT']),
-      categoryId: z.string().min(1, 'Categoria é obrigatória'),
+    const bodySchema = z.object({
+      name: z.string(),
+      amount: z.number(),
+      date: z.string().datetime(),
+      categoryId: z.string().uuid(),
+      workspaceId: z.string().cuid().or(z.string().uuid()),
+      type: z.enum(['EXPENSE', 'DEPOSIT', 'INVESTMENT']),
       paymentMethod: z.enum([
         'CREDIT_CARD',
         'DEBIT_CARD',
@@ -19,40 +21,32 @@ export class CreateTransactionController {
         'PIX',
         'OTHER',
       ]),
-      date: z.coerce.date(),
-      workspaceId: z.string().min(1),
 
       // Opcionais
-      creditCardId: z.string().nullable().optional(),
-      payee: z.string().trim().optional().nullable(),
-      goalId: z.string().nullable().optional(),
-      observation: z.string().max(255).optional().nullable(),
-      memberId: z.string().optional().nullable(),
+      observation: z.string().nullable().optional(),
+      payee: z.string().nullable().optional(),
+      memberId: z.string().uuid().nullable().optional(),
+      creditCardId: z.string().uuid().nullable().optional(),
 
-      totalInstallments: z.number().min(1).max(72).default(1).nullable().optional(),
-      installmentNumber: z.number().min(1).max(72).default(1).nullable().optional(),
-
-      // 👇 NOVO CAMPO: Define se o valor enviado é da parcela ou total
-      isInstallmentValue: z.boolean().default(false).optional(),
+      // Parcelamento (Opcional, caso implemente no front futuramente)
+      installments: z.number().min(1).optional(),
     });
 
     try {
-      const { ...data } = createTransactionSchema.parse(req.body);
+      const data = bodySchema.parse(req.body);
 
-      const transactionsRepository = new TransactionsRepository();
-      const createTransactionService = new CreateTransactionService(transactionsRepository);
+      const repo = new TransactionsRepository();
+      const service = new CreateTransactionService(repo);
 
-      const transaction = await createTransactionService.execute(data);
+      const transaction = await service.execute({
+        ...data,
+        date: new Date(data.date),
+      });
 
       return res.status(201).json(transaction);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: 'Erro de validação',
-          issues: err.format(),
-        });
-      }
-      return res.status(400).json({ error: (err as Error).message });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ issues: err.format() });
+      return res.status(400).json({ error: err.message });
     }
   }
 }

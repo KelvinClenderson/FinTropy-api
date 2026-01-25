@@ -1,14 +1,11 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { UsersRepository } from '../../repositories/users.repository';
-import { AuthenticateUserService } from '../../services/authenticate-user.service';
+// Pode remover o import do UsersRepository se não for usar mais nada dele aqui
+// import { UsersRepository } from '../../repositories/users.repository';
+import { AuthenticateUserService } from '../../services/sessions/authenticate-user.service';
 
 export class AuthenticateController {
   async handle(req: Request, res: Response) {
-    console.log('Login Request Body:', req.body);
-    console.log('Content-Type:', req.headers['content-type']);
-
-    // 1. Validação com Zod
     const authBodySchema = z.object({
       email: z.string().email(),
       password: z.string(),
@@ -16,18 +13,15 @@ export class AuthenticateController {
 
     const { email, password } = authBodySchema.parse(req.body);
 
-    // 2. Injeção de Dependência
-    const usersRepository = new UsersRepository();
-    const authenticateUserService = new AuthenticateUserService(usersRepository);
+    const authenticateUserService = new AuthenticateUserService();
 
     try {
-      // 3. Execução
-      const { user, token } = await authenticateUserService.execute({
+      const { user, token, workspace } = await authenticateUserService.execute({
         email,
         password,
       });
 
-      return res.json({ user, token });
+      return res.json({ user, token, workspace });
     } catch (err) {
       if (err instanceof Error) {
         return res.status(401).json({ error: err.message });
