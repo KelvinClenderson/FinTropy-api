@@ -124,6 +124,21 @@ export class TransactionsRepository {
     });
   }
 
+  // Busca todas as transações de um cartão (usado para cálculo de limite)
+  // Otimização: Podemos limitar a busca para transações que ainda não venceram tecnicamente,
+  // mas buscar tudo garante precisão se houver parcelas muito longas (ex: 24x)
+  async findAllByCardId(creditCardId: string) {
+    return await prisma.transaction.findMany({
+      where: {
+        creditCardId,
+      },
+      select: {
+        amount: true,
+        date: true,
+      },
+    });
+  }
+
   // ============================================================
   // MÉTODOS DO DASHBOARD (Estatísticas)
   // ============================================================

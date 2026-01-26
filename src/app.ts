@@ -3,10 +3,13 @@ import express from 'express';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express'; // Importar UI
 import { authenticateRoutes } from './routes/auth.routes';
+import { budgetsRoutes } from './routes/budgets.routes';
 import { categoriesRoutes } from './routes/categories.routes';
 import { creditCardsRoutes } from './routes/credit-cards.routes';
+import { cronRoutes } from './routes/cron.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
 import { goalsRoutes } from './routes/goals.routes';
+import { membersRoutes } from './routes/members.routes';
 import { recurringTransactionsRoutes } from './routes/recurring-transactions.routes';
 import { transactionsRoutes } from './routes/transactions.routes';
 import { workspacesRoutes } from './routes/workspaces.routes';
@@ -28,6 +31,9 @@ app.use('/recurring-transactions', recurringTransactionsRoutes);
 app.use('/categories', categoriesRoutes);
 app.use('/goals', goalsRoutes);
 app.use('/workspaces', workspacesRoutes);
+app.use('/budgets', budgetsRoutes);
+app.use('/cron', cronRoutes);
+app.use('/members', membersRoutes);
 
 // Documentação Swagger
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));

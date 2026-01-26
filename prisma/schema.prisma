@@ -291,3 +291,15 @@ model RecurringBudget {
   @@unique([workspaceId, categoryId])
   @@map("recurring_budgets")
 }
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  action    String   // Ex: "PROCESS_RECURRING"
+  date      DateTime @db.Date // A data de referência da execução (apenas dia/mês/ano)
+  status    String   // "SUCCESS" | "ERROR"
+  message   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([action, date]) // Garante que só tenha 1 log de sucesso por ação por dia
+  @@map("system_logs")
+}

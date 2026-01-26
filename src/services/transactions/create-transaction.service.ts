@@ -2,6 +2,7 @@ import { Prisma, TransactionPaymentMethod, TransactionType } from '@prisma/clien
 import { addMonths, startOfDay, subMonths } from 'date-fns';
 import { prisma } from '../../lib/prisma';
 import { TransactionsRepository } from '../../repositories/transactions.repository';
+import { calculateCardLimit } from '../../utils/credit-card.utils';
 
 interface IRequest {
   name: string;
@@ -76,17 +77,38 @@ export class CreateTransactionService {
 
     if (finalTotalInstallments > 1) {
       if (!isInstallmentValue) {
-        // Input é o TOTAL (ex: Notebook 5000 em 10x)
+        // Input é o TOTAL (ex: Notebook 5000 em 10x) -> Parcela será 500
         totalPurchaseAmount = amount;
         individualAmount = Number((amount / finalTotalInstallments).toFixed(2));
       } else {
-        // Input é a PARCELA (ex: Notebook, parcela de 500 em 10x)
+        // Input é a PARCELA (ex: Notebook, parcela de 500 em 10x) -> Total será 5000
         individualAmount = amount;
         totalPurchaseAmount = Number((amount * finalTotalInstallments).toFixed(2));
       }
     }
 
-    // 4. CÁLCULO DA DATA BASE (TIME TRAVEL)
+    // 4. VERIFICAÇÃO DE LIMITE DO CARTÃO (NOVO)
+    if (paymentMethod === 'CREDIT_CARD' && creditCardId && type === 'EXPENSE') {
+      const card = await this.transactionsRepository.findCreditCardById(creditCardId);
+
+      if (card) {
+        // Busca todas as transações atuais desse cartão para calcular o consumo atual
+        const cardTransactions = await this.transactionsRepository.findAllByCardId(creditCardId);
+
+        // Calcula quanto já está usado e quanto está livre
+        const { availableLimit } = calculateCardLimit(card, cardTransactions);
+
+        // Verifica se o valor TOTAL da compra cabe no limite disponível
+        // (Compras parceladas consomem o limite total imediatamente)
+        if (totalPurchaseAmount > availableLimit) {
+          throw new Error(
+            `Limite insuficiente. Disponível: R$ ${availableLimit.toFixed(2).replace('.', ',')}`,
+          );
+        }
+      }
+    }
+
+    // 5. CÁLCULO DA DATA BASE (TIME TRAVEL)
     // Se a requisição diz "Esta é a parcela 3", precisamos achar quando foi a parcela 1.
     let firstInstallmentDate = new Date(billingDate);
     if (currentInstallmentInput > 1) {
@@ -109,7 +131,7 @@ export class CreateTransactionService {
       observation: observation || null,
     };
 
-    // 5. CRIAÇÃO DE PARCELAMENTO (Múltiplas Transações)
+    // 6. CRIAÇÃO DE PARCELAMENTO (Múltiplas Transações)
     if (finalTotalInstallments > 1) {
       return await prisma.$transaction(async (tx) => {
         const transactionsToCreate: Prisma.TransactionCreateManyInput[] = [];
@@ -154,7 +176,7 @@ export class CreateTransactionService {
       });
     }
 
-    // 6. CRIAÇÃO SIMPLES (Transação Única)
+    // 7. CRIAÇÃO SIMPLES (Transação Única)
     return await this.transactionsRepository.create({
       ...transactionBaseData,
       date: billingDate,
