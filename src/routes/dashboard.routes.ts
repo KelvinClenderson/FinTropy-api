@@ -4,7 +4,6 @@ import { GetDashboardController } from '../controllers/dashboard/get-dashboard.c
 import { GetMonthForecastController } from '../controllers/dashboard/get-month-forecast.controller';
 import { GetUpcomingBillsController } from '../controllers/dashboard/get-upcoming-bills.controller';
 import { ensureAuthenticated } from '../middlewares/ensure-authenticated.middleware';
-import { ensureWorkspaceMember } from '../middlewares/ensure-workspace-member.middleware';
 
 const dashboardRoutes = Router();
 const getDashboardController = new GetDashboardController();
@@ -13,7 +12,6 @@ const getUpcomingBillsController = new GetUpcomingBillsController();
 const getMonthForecastController = new GetMonthForecastController();
 
 dashboardRoutes.use(ensureAuthenticated);
-dashboardRoutes.use(ensureWorkspaceMember);
 
 dashboardRoutes.get('/', getDashboardController.handle);
 dashboardRoutes.get('/annual', getAnnualReportController.handle);

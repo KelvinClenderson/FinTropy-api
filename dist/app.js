@@ -24,6 +24,7 @@ const workspaces_routes_1 = require("./routes/workspaces.routes");
 const swagger_output_json_1 = __importDefault(require("./swagger_output.json"));
 exports.app = (0, express_1.default)();
 // Middlewares Globais
+exports.app.use(express_1.default.json());
 exports.app.use((0, helmet_1.default)()); // Segurança de headers
 exports.app.use((0, cors_1.default)()); // Permitir acesso do frontend
 exports.app.use(express_1.default.json());
