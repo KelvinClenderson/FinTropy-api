@@ -1,36 +1,39 @@
+import { PrismaClient } from '@prisma/client';
 import { NextFunction, Request, Response } from 'express';
-import { prisma } from '../lib/prisma';
+
+const prisma = new PrismaClient();
 
 export async function ensureWorkspaceMember(req: Request, res: Response, next: NextFunction) {
-  const userId = req.user.id; // O usuário já foi autenticado pelo ensureAuthenticated
+  try {
+    const userId = req.user?.id;
 
-  // Busca o workspaceId em qualquer lugar possível
-  const workspaceId =
-    req.body.workspaceId || req.query.workspaceId || req.params.workspaceId || req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Usuário não autenticado.' });
+    }
 
-  // Se a rota não exige workspaceId específico (ex: criar workspace), passa
-  if (!workspaceId) {
-    return next();
-  }
+    // 👇 CORREÇÃO: Procura o workspaceId em Params, Query ou Body (nesta ordem)
+    const workspaceId = req.params.workspaceId || req.query.workspaceId || req.body.workspaceId;
 
-  // Verifica no banco se existe o vínculo
-  const membership = await prisma.workspaceUser.findUnique({
-    where: {
-      userId_workspaceId: {
-        userId,
-        workspaceId: String(workspaceId),
+    // Se não encontrou o ID em lugar nenhum, bloqueia mas NÃO CRASHA
+    if (!workspaceId) {
+      return res.status(400).json({ error: 'Workspace ID é obrigatório para esta rota.' });
+    }
+
+    // Verifica no banco se o usuário pertence a este workspace
+    const member = await prisma.workspaceUser.findFirst({
+      where: {
+        workspaceId: String(workspaceId), // Garante que seja string
+        userId: userId,
       },
-    },
-  });
+    });
 
-  if (!membership) {
-    // Retorna 403 Forbidden (Proibido) em vez de 400 ou 404 para não vazar info
-    return res.status(403).json({ error: 'Acesso negado a este workspace.' });
+    if (!member) {
+      return res.status(403).json({ error: 'Acesso negado a este workspace.' });
+    }
+
+    return next();
+  } catch (err) {
+    console.error('Erro no middleware de workspace:', err);
+    return res.status(500).json({ error: 'Erro interno ao validar workspace.' });
   }
-
-  // Se encontrou, anexa a role no request para uso futuro (opcional) e prossegue
-  // @ts-ignore
-  req.userRole = membership.role;
-
-  return next();
 }
