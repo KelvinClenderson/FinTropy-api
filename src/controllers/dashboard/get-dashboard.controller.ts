@@ -5,31 +5,30 @@ import { GetDashboardStatsService } from '../../services/dashboard/get-dashboard
 
 export class GetDashboardController {
   async handle(req: Request, res: Response) {
-    const dashboardQuerySchema = z.object({
+    const querySchema = z.object({
       month: z.coerce.number().min(1).max(12),
       year: z.coerce.number().min(2000),
-      // 👇 CORREÇÃO: Removemos o .uuid() para aceitar CUID ou qualquer string ID
       workspaceId: z.string().min(1),
     });
 
     try {
-      const { month, year, workspaceId } = dashboardQuerySchema.parse(req.query);
+      const { month, year, workspaceId } = querySchema.parse(req.query);
 
-      const transactionsRepository = new TransactionsRepository();
-      const getDashboardStatsService = new GetDashboardStatsService(transactionsRepository);
+      const repo = new TransactionsRepository();
+      const service = new GetDashboardStatsService(repo);
 
-      const stats = await getDashboardStatsService.execute({
+      const stats = await service.execute({
         workspaceId,
         month,
         year,
       });
 
       return res.json(stats);
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Dados inválidos', issues: err.format() });
+        return res.status(400).json({ issues: err.format() });
       }
-      return res.status(500).json({ error: 'Internal Server Error' });
+      return res.status(400).json({ error: err.message });
     }
   }
 }

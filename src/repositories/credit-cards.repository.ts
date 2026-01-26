@@ -21,6 +21,14 @@ export class CreditCardsRepository {
     });
   }
 
+  // 👇 NOVO MÉTODO
+  async update(id: string, data: Prisma.CreditCardUpdateInput) {
+    return await prisma.creditCard.update({
+      where: { id },
+      data,
+    });
+  }
+
   async delete(id: string) {
     return await prisma.creditCard.delete({
       where: { id },

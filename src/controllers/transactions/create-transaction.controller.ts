@@ -27,9 +27,11 @@ export class CreateTransactionController {
       payee: z.string().nullable().optional(),
       memberId: z.string().uuid().nullable().optional(),
       creditCardId: z.string().uuid().nullable().optional(),
-
-      // Parcelamento (Opcional, caso implemente no front futuramente)
+      // Parcelamento
       installments: z.number().min(1).optional(),
+      isInstallmentValue: z.boolean().optional(),
+      // Meta associada
+      goalId: z.string().uuid().nullable().optional(),
     });
 
     try {
@@ -41,6 +43,8 @@ export class CreateTransactionController {
       const transaction = await service.execute({
         ...data,
         date: new Date(data.date),
+        // FIX: Mapeamento explícito de 'installments' (frontend) para 'totalInstallments' (serviço)
+        totalInstallments: data.installments,
       });
 
       return res.status(201).json(transaction);

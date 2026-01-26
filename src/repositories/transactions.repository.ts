@@ -85,8 +85,6 @@ export class TransactionsRepository {
     month: number;
     year: number;
   }) {
-    // Definir o intervalo do mês (do dia 1 à 00:00 até o último dia às 23:59)
-    // month - 1 porque o Javascript conta meses de 0 a 11
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
@@ -98,11 +96,11 @@ export class TransactionsRepository {
           lte: endDate,
         },
       },
-      orderBy: { date: 'desc' }, // Ordenar por data (mais recente no topo)
+      orderBy: { date: 'desc' },
       include: {
         category: { select: { id: true, name: true, icon: true, color: true } },
-        creditCard: { select: { id: true, name: true } }, // Mostra qual cartão foi usado
-        parent: { select: { id: true, name: true } }, // Se for parcela, mostra a pai
+        creditCard: { select: { id: true, name: true } },
+        parent: { select: { id: true, name: true } },
       },
     });
   }
@@ -111,14 +109,14 @@ export class TransactionsRepository {
   // AUXILIARES
   // ============================================================
 
-  // 9. Busca Cartão Específico (Essencial para lógica de fechamento de fatura)
+  // 9. Busca Cartão Específico
   async findCreditCardById(id: string) {
     return await prisma.creditCard.findUnique({
       where: { id },
     });
   }
 
-  // 10. Busca detalhes das categorias (Usado no Dashboard)
+  // 10. Busca detalhes das categorias
   async findCategoriesByIds(ids: string[]) {
     return await prisma.category.findMany({
       where: { id: { in: ids } },
@@ -130,7 +128,7 @@ export class TransactionsRepository {
   // MÉTODOS DO DASHBOARD (Estatísticas)
   // ============================================================
 
-  // 11. Agrupamento para Cards de Resumo (Receita, Despesa, Saldo, Investimento)
+  // 11. Agrupamento para Cards de Resumo
   async getBalanceStats(workspaceId: string, startDate: Date, endDate: Date) {
     return await prisma.transaction.groupBy({
       by: ['type'],
@@ -147,7 +145,7 @@ export class TransactionsRepository {
     });
   }
 
-  // 12. Agrupamento para Gráfico de Pizza (Despesas por Categoria)
+  // 12. Agrupamento para Gráfico de Pizza
   async getExpensesByCategory(workspaceId: string, startDate: Date, endDate: Date) {
     return await prisma.transaction.groupBy({
       by: ['categoryId'],
@@ -165,7 +163,7 @@ export class TransactionsRepository {
     });
   }
 
-  // 13. Histórico: Busca as últimas transações JÁ REALIZADAS (Data <= Hoje)
+  // 13. Histórico: Busca as últimas transações
   async findLatestInPeriod(workspaceId: string, startDate: Date, cutOffDate: Date) {
     return await prisma.transaction.findMany({
       where: {
@@ -175,7 +173,7 @@ export class TransactionsRepository {
           lte: cutOffDate,
         },
       },
-      orderBy: { date: 'desc' }, // Mais recentes primeiro
+      orderBy: { date: 'desc' },
       take: 5,
       include: {
         category: { select: { name: true, icon: true, color: true } },
@@ -183,24 +181,44 @@ export class TransactionsRepository {
     });
   }
 
-  // 14. Futuro: Busca despesas A VENCER (Contas a Pagar)
+  // 14. Futuro: Busca despesas A VENCER
   async findUpcomingExpenses(workspaceId: string, cutOffDate: Date, endDate: Date) {
     return await prisma.transaction.findMany({
       where: {
         workspaceId,
         type: 'EXPENSE',
-        // Exclui cartão de crédito da lista de "boletos a pagar"
         paymentMethod: {
           not: 'CREDIT_CARD',
         },
         date: {
-          gt: cutOffDate, // Estritamente maior que a data de corte (futuro)
+          gt: cutOffDate,
           lte: endDate,
         },
       },
-      orderBy: { date: 'asc' }, // Mais próximas primeiro (cronológico)
+      orderBy: { date: 'asc' },
       include: {
         category: { select: { name: true, icon: true, color: true } },
+      },
+    });
+  }
+
+  // 👇 15. NOVO: Busca Transações por Período (ESSENCIAL PARA O NOVO DASHBOARD)
+  async findByWorkspaceAndPeriod(workspaceId: string, startDate: Date, endDate: Date) {
+    return await prisma.transaction.findMany({
+      where: {
+        workspaceId,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+      include: {
+        category: { select: { id: true, name: true, icon: true, color: true } },
+        // 👇 CORREÇÃO: Removemos 'color' daqui, pois Member não tem cor no schema
+        member: { select: { id: true, name: true } },
       },
     });
   }

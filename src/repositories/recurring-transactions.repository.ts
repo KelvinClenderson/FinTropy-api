@@ -1,29 +1,48 @@
-import { Prisma, RecurringTransaction } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 export class RecurringTransactionsRepository {
-  // 1. Criar nova recorrência
-  async create(
-    data: Prisma.RecurringTransactionUncheckedCreateInput,
-  ): Promise<RecurringTransaction> {
+  // Cria uma nova recorrência
+  async create(data: Prisma.RecurringTransactionUncheckedCreateInput) {
     return await prisma.recurringTransaction.create({
       data,
     });
   }
 
-  // 2. Listar por Workspace
+  // Lista todas do workspace (com dados da categoria e cartão)
   async findByWorkspace(workspaceId: string) {
     return await prisma.recurringTransaction.findMany({
       where: { workspaceId },
       include: {
-        category: { select: { id: true, name: true, icon: true, color: true } },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            icon: true,
+            color: true,
+          },
+        },
+        creditCard: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
-  // 3. Deletar (Já fizemos a lógica no TransactionRepo, mas é bom ter aqui o básico)
+  // Busca por ID (para validações)
+  async findById(id: string) {
+    return await prisma.recurringTransaction.findUnique({
+      where: { id },
+    });
+  }
+
+  // Deleta a recorrência (cancela assinatura)
   async delete(id: string) {
-    await prisma.recurringTransaction.delete({
+    return await prisma.recurringTransaction.delete({
       where: { id },
     });
   }

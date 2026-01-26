@@ -24,7 +24,7 @@ export class CreateRecurringTransactionService {
 
     const startDateTime = startOfDay(new Date(startDate));
 
-    // Define data final (2 anos se não informado)
+    // Data final (default 2 anos)
     let endDateTime: Date;
     if (data.endDate) {
       endDateTime = startOfDay(new Date(data.endDate));
@@ -60,7 +60,6 @@ export class CreateRecurringTransactionService {
       ) {
         let transactionDate = setDate(currentMonthDate, dayOfPayment);
 
-        // Ajuste se a data calculada for anterior ao início real
         if (isBefore(transactionDate, startDateTime)) {
           transactionDate = addMonths(transactionDate, 1);
           currentMonthDate = transactionDate;
@@ -73,6 +72,7 @@ export class CreateRecurringTransactionService {
           categoryId: data.categoryId,
           name: data.name,
           amount: new Prisma.Decimal(amount),
+          totalAmount: new Prisma.Decimal(amount), // Recorrência: Total = Parcela
           type: data.type,
           paymentMethod: data.paymentMethod,
           date: transactionDate,
@@ -81,6 +81,9 @@ export class CreateRecurringTransactionService {
           memberId: memberId || null,
           creditCardId: creditCardId || null,
           recurringTransactionId: recurringRule.id,
+          installmentNumber: null,
+          totalInstallments: null,
+          parentId: null,
         });
 
         currentMonthDate = addMonths(currentMonthDate, 1);

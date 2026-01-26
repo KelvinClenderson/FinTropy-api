@@ -38,17 +38,17 @@ enum TransactionPaymentMethod {
 // --- MODELS ---
 
 model User {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   name         String
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  avatarUrl    String?  @map("avatar_url")
+  email        String  @unique
+  passwordHash String  @map("password_hash")
+  avatarUrl    String? @map("avatar_url")
 
-  themeMode    String   @default("LIGHT") @map("theme_mode")
-  primaryColor String   @default("#56B22E") @map("primary_color")
+  themeMode    String @default("LIGHT") @map("theme_mode")
+  primaryColor String @default("#56B22E") @map("primary_color")
 
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relacionamentos
   workspaceUsers WorkspaceUser[]
@@ -171,6 +171,7 @@ model Transaction {
   name          String
   type          TransactionType
   amount        Decimal                  @db.Decimal(10, 2)
+  totalAmount   Decimal?                 @map("total_amount") @db.Decimal(10, 2) // NOVO: Valor total da compra
   paymentMethod TransactionPaymentMethod @map("payment_method")
   date          DateTime
 
@@ -248,8 +249,13 @@ model Goal {
   id            String  @id @default(uuid())
   name          String
   targetAmount  Decimal @map("target_amount") @db.Decimal(10, 2)
+  deadline     DateTime
+
   currentAmount Decimal @default(0) @map("current_amount") @db.Decimal(10, 2)
   workspaceId   String  @map("workspace_id")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions Transaction[]
