@@ -1,0 +1,212 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TransactionsRepository = void 0;
+const prisma_1 = require("../lib/prisma");
+class TransactionsRepository {
+    // ============================================================
+    // CRUD BÁSICO (Create, Read, Update, Delete)
+    // ============================================================
+    // 1. Cria uma transação única
+    async create(data) {
+        return await prisma_1.prisma.transaction.create({
+            data,
+        });
+    }
+    // 2. Cria múltiplas transações (usado no parcelamento)
+    async createMany(data) {
+        return await prisma_1.prisma.transaction.createMany({
+            data,
+        });
+    }
+    // 3. Atualizar uma transação existente (Edição)
+    async update(id, data) {
+        return await prisma_1.prisma.transaction.update({
+            where: { id },
+            data,
+        });
+    }
+    // 4. Deletar por ID (Deleção Simples)
+    async delete(id) {
+        await prisma_1.prisma.transaction.delete({
+            where: { id },
+        });
+    }
+    // 5. Busca transação por ID (Detalhes ou para validação antes de update/delete)
+    async findById(id) {
+        return await prisma_1.prisma.transaction.findUnique({
+            where: { id },
+        });
+    }
+    // ============================================================
+    // DELEÇÃO COMPLEXA (Parcelas e Recorrências)
+    // ============================================================
+    // 6. Deletar transação pelo Parent ID (Remove todas as parcelas de uma vez)
+    async deleteByParentId(parentId) {
+        await prisma_1.prisma.transaction.deleteMany({
+            where: {
+                OR: [
+                    { id: parentId }, // O pai
+                    { parentId: parentId }, // Os filhos
+                ],
+            },
+        });
+    }
+    // 7. Deletar Configuração de Recorrência (E todas as transações geradas por ela)
+    async deleteRecurringAndTransactions(recurringId) {
+        // A. Deleta as transações geradas (histórico e futuro)
+        await prisma_1.prisma.transaction.deleteMany({
+            where: { recurringTransactionId: recurringId },
+        });
+        // B. Deleta a configuração da recorrência (a "regra" em si)
+        await prisma_1.prisma.recurringTransaction.delete({
+            where: { id: recurringId },
+        });
+    }
+    // ============================================================
+    // LISTAGEM (Extrato)
+    // ============================================================
+    // 8. Busca todas as transações de um mês específico
+    async findAllByMonth({ workspaceId, month, year, }) {
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+        return await prisma_1.prisma.transaction.findMany({
+            where: {
+                workspaceId,
+                date: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            },
+            orderBy: { date: 'desc' },
+            include: {
+                category: { select: { id: true, name: true, icon: true, color: true } },
+                creditCard: { select: { id: true, name: true } },
+                parent: { select: { id: true, name: true } },
+            },
+        });
+    }
+    // ============================================================
+    // AUXILIARES
+    // ============================================================
+    // 9. Busca Cartão Específico
+    async findCreditCardById(id) {
+        return await prisma_1.prisma.creditCard.findUnique({
+            where: { id },
+        });
+    }
+    // 10. Busca detalhes das categorias
+    async findCategoriesByIds(ids) {
+        return await prisma_1.prisma.category.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, name: true, color: true, icon: true },
+        });
+    }
+    // Busca todas as transações de um cartão (usado para cálculo de limite)
+    // Otimização: Podemos limitar a busca para transações que ainda não venceram tecnicamente,
+    // mas buscar tudo garante precisão se houver parcelas muito longas (ex: 24x)
+    async findAllByCardId(creditCardId) {
+        return await prisma_1.prisma.transaction.findMany({
+            where: {
+                creditCardId,
+            },
+            select: {
+                amount: true,
+                date: true,
+            },
+        });
+    }
+    // ============================================================
+    // MÉTODOS DO DASHBOARD (Estatísticas)
+    // ============================================================
+    // 11. Agrupamento para Cards de Resumo
+    async getBalanceStats(workspaceId, startDate, endDate) {
+        return await prisma_1.prisma.transaction.groupBy({
+            by: ['type'],
+            where: {
+                workspaceId,
+                date: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            },
+            _sum: {
+                amount: true,
+            },
+        });
+    }
+    // 12. Agrupamento para Gráfico de Pizza
+    async getExpensesByCategory(workspaceId, startDate, endDate) {
+        return await prisma_1.prisma.transaction.groupBy({
+            by: ['categoryId'],
+            where: {
+                workspaceId,
+                type: 'EXPENSE',
+                date: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            },
+            _sum: {
+                amount: true,
+            },
+        });
+    }
+    // 13. Histórico: Busca as últimas transações
+    async findLatestInPeriod(workspaceId, startDate, cutOffDate) {
+        return await prisma_1.prisma.transaction.findMany({
+            where: {
+                workspaceId,
+                date: {
+                    gte: startDate,
+                    lte: cutOffDate,
+                },
+            },
+            orderBy: { date: 'desc' },
+            take: 5,
+            include: {
+                category: { select: { name: true, icon: true, color: true } },
+            },
+        });
+    }
+    // 14. Futuro: Busca despesas A VENCER
+    async findUpcomingExpenses(workspaceId, cutOffDate, endDate) {
+        return await prisma_1.prisma.transaction.findMany({
+            where: {
+                workspaceId,
+                type: 'EXPENSE',
+                paymentMethod: {
+                    not: 'CREDIT_CARD',
+                },
+                date: {
+                    gt: cutOffDate,
+                    lte: endDate,
+                },
+            },
+            orderBy: { date: 'asc' },
+            include: {
+                category: { select: { name: true, icon: true, color: true } },
+            },
+        });
+    }
+    // 👇 15. NOVO: Busca Transações por Período (ESSENCIAL PARA O NOVO DASHBOARD)
+    async findByWorkspaceAndPeriod(workspaceId, startDate, endDate) {
+        return await prisma_1.prisma.transaction.findMany({
+            where: {
+                workspaceId,
+                date: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            },
+            orderBy: {
+                date: 'desc',
+            },
+            include: {
+                category: { select: { id: true, name: true, icon: true, color: true } },
+                // 👇 CORREÇÃO: Removemos 'color' daqui, pois Member não tem cor no schema
+                member: { select: { id: true, name: true } },
+            },
+        });
+    }
+}
+exports.TransactionsRepository = TransactionsRepository;

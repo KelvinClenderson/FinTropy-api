@@ -5,32 +5,42 @@ import { DeleteTransactionService } from '../../services/transactions/delete-tra
 
 export class DeleteTransactionController {
   async handle(req: Request, res: Response) {
+    // Validação de Parâmetros de Rota
     const paramSchema = z.object({
-      id: z.string().cuid(),
+      id: z.string().uuid(), // Alterado para UUID para evitar erro se seu banco usa UUID
     });
 
-    // Validamos se o usuário quer deletar tudo
+    // Validação de Query Params
     const querySchema = z.object({
       workspaceId: z.string(),
       deleteAll: z
         .enum(['true', 'false'])
         .optional()
-        .transform((val) => val === 'true'),
+        .transform((val) => val === 'true'), // Converte string 'true'/'false' para boolean
     });
 
-    const { id } = paramSchema.parse(req.params);
-    // Aqui assumimos que o Zod vai garantir que workspaceId existe na query
-    const { workspaceId, deleteAll } = querySchema.parse(req.query);
+    try {
+      const { id } = paramSchema.parse(req.params);
 
-    const repo = new TransactionsRepository();
-    const service = new DeleteTransactionService(repo);
+      // Valida e extrai workspaceId e deleteAll (padrão false se não enviado)
+      const { workspaceId, deleteAll } = querySchema.parse(req.query);
 
-    await service.execute({
-      id,
-      workspaceId,
-      deleteAll: deleteAll || false,
-    });
+      const repo = new TransactionsRepository();
+      const service = new DeleteTransactionService(repo);
 
-    return res.status(204).send();
+      await service.execute({
+        id,
+        workspaceId,
+        deleteAll: deleteAll || false, // Passa o boolean para o service
+      });
+
+      return res.status(204).send();
+    } catch (err: any) {
+      // Tratamento básico de erros do Zod ou do Service
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ issues: err.format() });
+      }
+      return res.status(400).json({ error: err.message });
+    }
   }
 }

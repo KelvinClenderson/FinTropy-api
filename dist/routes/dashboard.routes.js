@@ -1,0 +1,22 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.dashboardRoutes = void 0;
+const express_1 = require("express");
+const get_annual_report_controller_1 = require("../controllers/dashboard/get-annual-report.controller"); // 👈 Importe
+const get_dashboard_controller_1 = require("../controllers/dashboard/get-dashboard.controller");
+const get_month_forecast_controller_1 = require("../controllers/dashboard/get-month-forecast.controller");
+const get_upcoming_bills_controller_1 = require("../controllers/dashboard/get-upcoming-bills.controller");
+const ensure_authenticated_middleware_1 = require("../middlewares/ensure-authenticated.middleware");
+const ensure_workspace_member_middleware_1 = require("../middlewares/ensure-workspace-member.middleware");
+const dashboardRoutes = (0, express_1.Router)();
+exports.dashboardRoutes = dashboardRoutes;
+const getDashboardController = new get_dashboard_controller_1.GetDashboardController();
+const getAnnualReportController = new get_annual_report_controller_1.GetAnnualReportController();
+const getUpcomingBillsController = new get_upcoming_bills_controller_1.GetUpcomingBillsController();
+const getMonthForecastController = new get_month_forecast_controller_1.GetMonthForecastController();
+dashboardRoutes.use(ensure_authenticated_middleware_1.ensureAuthenticated);
+dashboardRoutes.use(ensure_workspace_member_middleware_1.ensureWorkspaceMember);
+dashboardRoutes.get('/', getDashboardController.handle);
+dashboardRoutes.get('/annual', getAnnualReportController.handle);
+dashboardRoutes.get('/upcoming-bills', getUpcomingBillsController.handle);
+dashboardRoutes.get('/forecast', getMonthForecastController.handle);
