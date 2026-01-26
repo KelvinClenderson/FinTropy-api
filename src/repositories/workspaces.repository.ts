@@ -142,4 +142,18 @@ export class WorkspacesRepository {
       where: { id },
     });
   }
+
+  async delete(id: string) {
+    await prisma.workspace.delete({
+      where: { id },
+    });
+  }
+
+  // Buscar papel do usuário no workspace (já existe findMembership, podemos reutilizar ou garantir que exista)
+  async getUserRole(workspaceId: string, userId: string) {
+    const member = await prisma.workspaceUser.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+    });
+    return member?.role;
+  }
 }

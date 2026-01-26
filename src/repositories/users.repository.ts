@@ -13,7 +13,6 @@ export class UsersRepository {
     });
   }
 
-  // 👇 Método para atualizar configurações
   async updateSettings(userId: string, themeMode: string, primaryColor: string) {
     return await prisma.user.update({
       where: { id: userId },
@@ -27,6 +26,16 @@ export class UsersRepository {
         email: true,
         themeMode: true,
         primaryColor: true,
+        onboardingComplete: true,
+      },
+    });
+  }
+
+  async completeOnboarding(userId: string) {
+    return await prisma.user.update({
+      where: { id: userId },
+      data: {
+        onboardingComplete: true,
       },
     });
   }
