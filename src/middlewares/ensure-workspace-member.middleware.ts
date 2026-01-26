@@ -11,18 +11,19 @@ export async function ensureWorkspaceMember(req: Request, res: Response, next: N
       return res.status(401).json({ error: 'Usuário não autenticado.' });
     }
 
-    // 👇 CORREÇÃO: Procura o workspaceId em Params, Query ou Body (nesta ordem)
-    const workspaceId = req.params.workspaceId || req.query.workspaceId || req.body.workspaceId;
+    // 👇 CORREÇÃO BLINDADA: Usamos '?.' para evitar erro se params/query/body forem undefined
+    const workspaceId = req.params?.workspaceId || req.query?.workspaceId || req.body?.workspaceId;
 
-    // Se não encontrou o ID em lugar nenhum, bloqueia mas NÃO CRASHA
+    // Se não encontrou o ID, retorna erro 400 (Bad Request) mas NÃO derruba o servidor
     if (!workspaceId) {
-      return res.status(400).json({ error: 'Workspace ID é obrigatório para esta rota.' });
+      // Opcional: Logar para debug sem crashar
+      console.warn(`[Middleware] Tentativa de acesso sem workspaceId. User: ${userId}`);
+      return res.status(400).json({ error: 'Workspace ID é obrigatório.' });
     }
 
-    // Verifica no banco se o usuário pertence a este workspace
     const member = await prisma.workspaceUser.findFirst({
       where: {
-        workspaceId: String(workspaceId), // Garante que seja string
+        workspaceId: String(workspaceId),
         userId: userId,
       },
     });
@@ -33,7 +34,8 @@ export async function ensureWorkspaceMember(req: Request, res: Response, next: N
 
     return next();
   } catch (err) {
-    console.error('Erro no middleware de workspace:', err);
-    return res.status(500).json({ error: 'Erro interno ao validar workspace.' });
+    console.error('Erro CRÍTICO no middleware de workspace:', err);
+    // Retorna erro 500 em vez de deixar o erro subir e matar o processo
+    return res.status(500).json({ error: 'Erro interno ao validar permissão.' });
   }
 }

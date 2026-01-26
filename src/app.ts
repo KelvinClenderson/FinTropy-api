@@ -20,6 +20,7 @@ import swaggerFile from './swagger_output.json';
 export const app = express();
 
 // Middlewares Globais
+app.use(express.json());
 app.use(helmet()); // Segurança de headers
 app.use(cors()); // Permitir acesso do frontend
 app.use(express.json());
